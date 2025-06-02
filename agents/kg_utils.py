@@ -1,16 +1,11 @@
 import pickle
 import traceback
-from typing import List, Union
-
-import numpy as np
-from cache import FileCache
-import pickle
-import traceback
-from typing import List, Union
-
-import numpy as np
-from cache import FileCache
 from collections import defaultdict, deque
+from typing import List, Union
+
+import numpy as np
+from cache import FileCache
+
 
 class KnowledgeGraph:
     def __init__(self):
