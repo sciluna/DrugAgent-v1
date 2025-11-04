@@ -27,9 +27,9 @@ Supported environments:
 1. Create .env file in project root
 2. Add API keys:
    OPENAI_API_KEY=your_key_here
-   BING_API_KEY=your_key_here
+   GOOGLE SEARCH_API_KEY=your_key_here
 
-This requires Open AI API and microsoft bing API.  
+This requires Open AI API and google search API.  
 We are working on updating with Ollama for free use.
 
 ### Installation using Docker
