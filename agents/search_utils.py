@@ -1,6 +1,7 @@
 import os
+import time
 import traceback
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import requests  # type: ignore
 from bs4 import BeautifulSoup
@@ -12,49 +13,83 @@ from openai import OpenAI
 
 load_dotenv()
 
-subscription_key = os.getenv("AZURE_SUBSCRIPTION_KEY")
-endpoint = "https://api.bing.microsoft.com/v7.0/search"
+# subscription_key = os.getenv("AZURE_SUBSCRIPTION_KEY")
+# endpoint = "https://api.bing.microsoft.com/v7.0/search"
 
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
+BASE_URL = "https://www.googleapis.com/customsearch/v1"
 
 # Create cache instances
 search_cache = FileCache("search_results")
 dti_score_cache = FileCache("search_dti_scores")
 
 
-def bing_search(query: str) -> Dict:
-    # Check cache
-    cached_result = search_cache.get(query)
-    if cached_result is not None:
-        return cached_result
+def google_search(
+    query: str,
+    api_key: str,
+    cx: str,
+    total_results: int = 10,
+    sites: list[str] | None = None,
+) -> list[dict]:
+    results, fetched = [], 0
+    if sites:
+        site_filter = " OR ".join(f"site:{d}" for d in sites)
+        q = f"({query}) ({site_filter})"
+    else:
+        q = query
 
-    mkt = "en-US"
-    params = {"q": query, "mkt": mkt}
-    headers = {"Ocp-Apim-Subscription-Key": subscription_key}
+    while fetched < total_results:
+        batch = min(10, total_results - fetched)
+        start = fetched + 1
+        params = {
+            "key": api_key,
+            "cx": cx,
+            "q": q,
+            "num": batch,
+            "start": start,
+            "safe": "off",
+        }
+        r = requests.get(BASE_URL, params=params, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        items = data.get("items", []) or []
+        results.extend(items)
+        if not items:
+            break
+        fetched += len(items)
+        time.sleep(0.3)
+    return results
 
-    try:
-        response = requests.get(endpoint, headers=headers, params=params)
-        response.raise_for_status()
-        result = response.json()
-        # Save result to cache
-        search_cache.set(query, result)
-        return result
-    except requests.RequestException as ex:
-        raise ex
 
-
-def extract_bing_search_results(api_response: Dict) -> List[Dict[str, str]]:
+def extract_search_results(api_response):
     results = []
     urls = []
-    if "webPages" in api_response and "value" in api_response["webPages"]:
-        for item in api_response["webPages"]["value"]:
-            title = item.get("name", "")
-            snippet = item.get("snippet", "")
-            url = item.get("url", "")
+
+    if isinstance(api_response, list):
+        items = api_response
+    elif isinstance(api_response, dict):
+        # Google CSE: items
+        items = api_response.get("items")
+        if items is None:
+            items = api_response.get("webPages", {}).get("value", [])
+    else:
+        items = []
+
+    for item in items:
+        # Google: title/snippet/link
+        # Bing  : name/snippet/url
+        title = item.get("title") or item.get("name") or ""
+        snippet = item.get("snippet") or item.get("htmlSnippet") or ""
+        url = item.get("link") or item.get("url") or ""
+        results.append({"title": title, "snippet": snippet, "url": url})
+        if url:
             urls.append(url)
-            results.append({"title": title, "snippet": snippet, "url": url})
+
     print(f"Extracted URLs: {urls}")
     if urls:
         get_pmid(urls)
+
     return results
 
 
@@ -177,7 +212,16 @@ def _calculate_individual_score(
 
 def search_drug_target(drug_name: str, target_name: str) -> List[Dict[str, str]]:
     query = f"{drug_name} {target_name} interaction"
-    return extract_bing_search_results(bing_search(query))
+    total_results = 10
+    items = google_search(
+        query=query,
+        api_key=GOOGLE_API_KEY,
+        cx=GOOGLE_CSE_ID,
+        total_results=total_results,
+        sites=["pmc.ncbi.nlm.nih.gov"],
+    )
+
+    return extract_search_results(items)
 
 
 def get_dti_score(name: str, target_name: str) -> tuple[float, str]:
@@ -194,7 +238,8 @@ def get_dti_score(name: str, target_name: str) -> tuple[float, str]:
         print("search_results is :", search_results)
         # Convert list of dictionaries to a single dictionary for compatibility
         search_results_dict = {"search_results": search_results}
-        reasoning = generate_reasoning(name, target_name, search_results_dict)
+        # reasoning = generate_reasoning(name, target_name, search_results_dict)
+        reasoning = None
         dti_score = calculate_dti_score(search_results, name, target_name)
         # Save score to cache
         dti_score_cache.set(cache_key, {"score": dti_score, "reasoning": reasoning})
