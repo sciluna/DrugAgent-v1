@@ -13,8 +13,8 @@ from openai import OpenAI
 
 load_dotenv()
 
-# subscription_key = os.getenv("AZURE_SUBSCRIPTION_KEY")
-# endpoint = "https://api.bing.microsoft.com/v7.0/search"
+subscription_key = os.getenv("AZURE_SUBSCRIPTION_KEY")
+endpoint = "https://api.bing.microsoft.com/v7.0/search"
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
@@ -238,8 +238,7 @@ def get_dti_score(name: str, target_name: str) -> tuple[float, str]:
         print("search_results is :", search_results)
         # Convert list of dictionaries to a single dictionary for compatibility
         search_results_dict = {"search_results": search_results}
-        # reasoning = generate_reasoning(name, target_name, search_results_dict)
-        reasoning = None
+        reasoning = generate_reasoning(name, target_name, search_results_dict)
         dti_score = calculate_dti_score(search_results, name, target_name)
         # Save score to cache
         dti_score_cache.set(cache_key, {"score": dti_score, "reasoning": reasoning})
