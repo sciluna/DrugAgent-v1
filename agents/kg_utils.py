@@ -1,11 +1,11 @@
+import math
 import pickle
 import traceback
 from collections import defaultdict, deque
+from typing import Dict, List, Optional, Tuple, Union
+
 import numpy as np
 from cache import FileCache
-import math
-from typing import Dict, Optional, Tuple, List, Union
-
 
 
 class KnowledgeGraph:
@@ -23,7 +23,7 @@ class KnowledgeGraph:
         def dfs(current, target, path, paths, visited):
             if len(paths) >= max_paths:
                 return
-            if (len(path)-1) > max_length:
+            if (len(path) - 1) > max_length:
                 return
             if current == target:
                 paths.append(path[:])
@@ -75,6 +75,7 @@ class KnowledgeGraph:
     def get_all_nodes(self):
         return list(self.graph.keys())
 
+
 def load_kg(file_path) -> KnowledgeGraph:
     with open(file_path, "rb") as f:
         kg = pickle.load(f)
@@ -89,6 +90,7 @@ dti_score_cache = FileCache("kg_dti_scores")
 _DEG: Dict[str, int] = {n: len(neigh) for n, neigh in kg.graph.items()}
 _NUM_NODES: int = len(_DEG)
 
+
 def _path_weight(path: List[str]) -> float:
     hops = len(path) - 1
     if hops <= 0:
@@ -101,6 +103,7 @@ def _path_weight(path: List[str]) -> float:
         s += (_DEG.get(n_i, 0) + _DEG.get(n_j, 0)) / (2.0 * _NUM_NODES)
 
     return (1.0 / hops) * s
+
 
 def _raw_kg_score_and_path(
     drug: str,
@@ -127,6 +130,7 @@ def _raw_kg_score_and_path(
             best_path = p
 
     return best_score, best_path
+
 
 def calculate_dti_score(drug, target):
     try:
