@@ -1,10 +1,11 @@
 import pickle
 import traceback
 from collections import defaultdict, deque
-from typing import List, Union
-
 import numpy as np
 from cache import FileCache
+import math
+from typing import Dict, Optional, Tuple, List, Union
+
 
 
 class KnowledgeGraph:
@@ -17,24 +18,12 @@ class KnowledgeGraph:
 
     def get_all_paths(
         self, start: str, end: str, max_length: int = 4, max_paths: int = 5
-    ) -> list:
-        """
-        Find all paths between start and end nodes within constraints
-
-        Args:
-            start: Starting node
-            end: Target node
-            max_length: Maximum path length
-            max_paths: Maximum number of paths to return
-
-        Returns:
-            List of paths, where each path is a list of nodes
-        """
+    ) -> List[List[str]]:
 
         def dfs(current, target, path, paths, visited):
             if len(paths) >= max_paths:
                 return
-            if len(path) > max_length:
+            if (len(path)-1) > max_length:
                 return
             if current == target:
                 paths.append(path[:])
@@ -86,7 +75,6 @@ class KnowledgeGraph:
     def get_all_nodes(self):
         return list(self.graph.keys())
 
-
 def load_kg(file_path) -> KnowledgeGraph:
     with open(file_path, "rb") as f:
         kg = pickle.load(f)
@@ -98,36 +86,85 @@ kg = load_kg("knowledge_graph.pkl")
 dti_score_cache = FileCache("kg_dti_scores")
 
 
+_DEG: Dict[str, int] = {n: len(neigh) for n, neigh in kg.graph.items()}
+_NUM_NODES: int = len(_DEG)
+
+def _path_weight(path: List[str]) -> float:
+    hops = len(path) - 1
+    if hops <= 0:
+        return 0.0
+
+    s = 0.0
+    for i in range(hops):
+        n_i = path[i]
+        n_j = path[i + 1]
+        s += (_DEG.get(n_i, 0) + _DEG.get(n_j, 0)) / (2.0 * _NUM_NODES)
+
+    return (1.0 / hops) * s
+
+def _raw_kg_score_and_path(
+    drug: str,
+    target: str,
+    max_hops: int = 4,
+    max_paths: int = 5,
+    scaling_factor: float = 1.0,  # set to 10.0 if you keep the constant in the paper
+) -> Tuple[float, Optional[List[str]]]:
+    paths = kg.get_all_paths(drug, target, max_length=max_hops, max_paths=max_paths)
+    if not paths:
+        return 0.0, None
+
+    best_score = 0.0
+    best_path: Optional[List[str]] = None
+
+    for p in paths:
+        hops = len(p) - 1
+        if hops <= 0:
+            continue
+        w = _path_weight(p)
+        score = (scaling_factor * w) / math.log1p(hops)  # ln(1+|p|)
+        if score > best_score:
+            best_score = score
+            best_path = p
+
+    return best_score, best_path
+
 def calculate_dti_score(drug, target):
     try:
         if drug not in kg.graph:
             reasoning = f"reasoning: Drug {drug} not found in knowledge graph."
-            return 0, reasoning
+            return 0.0, reasoning
 
         if target not in kg.graph:
             reasoning = f"reasoning: Target {target} not found in knowledge graph."
-            return 0, reasoning
+            return 0.0, reasoning
 
-        hops, path = (
-            kg.shortest_path(drug, target)["distance"],
-            kg.shortest_path(drug, target)["path"],
+        # IMPORTANT: set scaling_factor=10.0 ONLY if your manuscript keeps the constant 10
+        score, best_path = _raw_kg_score_and_path(
+            drug, target, max_hops=4, max_paths=5, scaling_factor=1.0
         )
-        if hops == -1:
-            reasoning = f"reasoning: No relationship found between {drug} and {target}, path is {path}."
-            return 0, reasoning
-        elif hops == 1:
-            reasoning = f"reasoning: Direct relationship found between {drug} and {target}, path is {path}."
-            return 1, reasoning
-        else:
-            reasoning = f"reasoning: Relationship found between {drug} and {target} with {hops} hops. Calculated score based on logarithmic distance. Path is {path}."
-            return 1 / (np.log1p(hops)), reasoning
+
+        if best_path is None or score <= 0.0:
+            reasoning = (
+                f"reasoning: No valid path found between {drug} and {target} "
+                f"within 4 hops (searched up to 5 paths)."
+            )
+            return 0.0, reasoning
+
+        hops = len(best_path) - 1
+        w = _path_weight(best_path)
+        reasoning = (
+            f"reasoning: Selected highest-scoring path between {drug} and {target} "
+            f"(hops={hops}). Computed w(p)={w:.6g} and score={score:.6g} "
+            f"using w(p)/ln(1+|p|). Path is {best_path}."
+        )
+        return float(score), reasoning
 
     except Exception as e:
         print(
             f"Error calculating DTI score for drug '{drug}' and target '{target}': {e}"
         )
         print(traceback.format_exc())
-        return 0, "reasoning: Error occurred while calculating DTI score."
+        return 0.0, "reasoning: Error occurred while calculating DTI score."
 
 
 def get_dti_score(drug: str, target: str) -> tuple[float, str]:
