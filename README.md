@@ -1,5 +1,13 @@
 # DrugAgent: Multi-Agent LLM-Based Reasoning for Drug-Target Interaction Prediction
 
+⚠️ Deprecated / Unmaintained
+
+This repository contains the **legacy v1 implementation** of DrugAgent.
+It is **no longer maintained** and will not receive updates or bug fixes.
+
+👉 **Successor (current implementation):**
+https://github.com/inoue0426/DrugAgent
+
 ## Overview
 
 DrugAgent is a multi-agent LLM system for drug-target interaction (DTI) prediction that combines AI model predictions, knowledge graph analysis, and literature search for comprehensive DTI prediction with interpretable reasoning.
